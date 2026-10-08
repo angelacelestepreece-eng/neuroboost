@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Neuroboost</title>
+    <style>
+      /* Wireframe fidelity: black and white only, one font, one size, one weight, generic boxes. */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font:
+          16px/1.4 Arial,
+          Helvetica,
+          sans-serif;
+        color: #000;
+      }
+      body {
+        background: #fff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      .box {
+        border: 2px solid #000;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .box p + p {
+        margin-top: 8px;
+      }
+      .placeholder {
+        border: 2px dashed #000;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      button {
+        background: #fff;
+        border: 2px solid #000;
+        padding: 10px 12px;
+        cursor: pointer;
+        text-align: left;
+      }
+      button:hover {
+        background: #fff;
+        outline: 2px solid #000;
+        outline-offset: 2px;
+      }
+      button:focus-visible {
+        outline: 3px solid #000;
+        outline-offset: 2px;
+      }
+      button.on {
+        background: #000;
+        color: #fff;
+      }
+      .two {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+      .list {
+        display: grid;
+        gap: 8px;
+      }
+      button.full {
+        width: 100%;
+      }
+      button:disabled {
+        border-style: dashed;
+        cursor: not-allowed;
+      }
+      input[type="text"] {
+        border: 2px solid #000;
+        background: #fff;
+        padding: 10px 12px;
+        width: 100%;
+        max-width: 360px;
+      }
+      input[type="text"]:focus-visible {
+        outline: 3px solid #000;
+        outline-offset: 2px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+      }
+      .scroll {
+        overflow-x: auto;
+        margin-bottom: 12px;
+      }
+      table.results {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      table.results th,
+      table.results td {
+        border: 1px solid #000;
+        padding: 4px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      @media (max-width: 700px) {
+        .two {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <p>[ LOGO ] Neuroboost</p>
+      <p>Find lesson plans that fit your child. Wireframe prototype.</p>
+    </div>
+
+    <div class="box" id="taskbar"></div>
+
+    <div class="box" id="viewsBox">
+      <p>How do you want to look?</p>
+      <div class="row" id="views" style="margin-top: 8px"></div>
+    </div>
+
+    <div class="box" id="crumbs"></div>
+    <div id="main"></div>
+
+    <script>
+      /* ---------- SINGLE SOURCE OF TRUTH: one lesson list feeds both views ---------- */
+
+      // View 1 categories and their values (from the card sort).
+      // "Cost" is now three price buckets, kept inside Preparations & Planning.
+      const CATS = [
+        ["Difficulty Levels", ["Beginner", "Intermediate", "Expert"]],
+        ["Work Environment", ["Inside", "Outside", "Online", "Offline"]],
+        [
+          "Time",
+          [
+            "Less than an hour",
+            "More than an hour",
+            "Multi-day",
+            "Time Sensitive",
+            "High Preparation Needed",
+            "Low Preparation Needed",
+            "Flexible",
+          ],
+        ],
+        [
+          "Sensory Focused",
+          [
+            "Hands On/Tactile",
+            "Auditory Focused",
+            "Visual Focused",
+            "Smell Focused",
+            "Taste Focused",
+            "Multimodal Sensory",
+            "Low Sensory",
+            "High Sensory",
+          ],
+        ],
+        [
+          "Lesson Structure",
+          [
+            "Independent Work",
+            "Requiring Adult Support",
+            "Group Focused/Social",
+            "Highly Structured",
+            "Flexible",
+            "Time Sensitive",
+            "Multi-day",
+            "Low Sensory",
+            "High Sensory",
+            "High Energy",
+            "Low Energy",
+          ],
+        ],
+        [
+          "Methods of Teaching",
+          [
+            "Hands On/Tactile",
+            "Visual Modeling",
+            "Video",
+            "Worksheet",
+            "Gamification",
+            "Online",
+            "Offline",
+            "Inside",
+            "Outside",
+          ],
+        ],
+        [
+          "Preparations & Planning",
+          [
+            "High Energy",
+            "Low Energy",
+            "Time Sensitive",
+            "Low Preparation Needed",
+            "High Preparation Needed",
+            "Less than $5",
+            "Between $5-10",
+            "More than $10",
+            "Requiring Adult Support",
+            "Independent Work",
+          ],
+        ],
+      ];
+
+      // Lowercase lookup so the raw tag text below maps onto the exact labels above.
+      const CANON = {};
+      CATS.forEach((c) => c[1].forEach((v) => (CANON[v.toLowerCase()] = v)));
+      const ALIAS = {
+        "teacher dependent": ["Requiring Adult Support"],
+        "individual/group": ["Group Focused/Social"],
+        "individual focused": [],
+        "beginner/intermediate": ["Beginner", "Intermediate"],
+        "low/moderate energy": ["Low Energy"],
+        "outside/nature": ["Outside"],
+        "inside or outside/nature": ["Inside", "Outside"],
+        "outside/nature or inside": ["Inside", "Outside"],
+        "low sensory/high sensory": ["Low Sensory", "High Sensory"],
+        "less than an hour per session": ["Less than an hour"],
+        "low preparation": ["Low Preparation Needed"],
+        "high preparation": ["High Preparation Needed"],
+      };
+
+      // [title, subject, tags, estimated cost, estimated time]
+      const RAW = [
+        [
+          "Multiplication Rap Video Party",
+          "Math",
+          "Auditory Focused, Visual Focused, Multimodal Sensory, Visual Modeling, High Energy, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Video, Online, Inside, Low preparation, Flexible",
+          "$0",
+          "20–30 min",
+        ],
+        [
+          "Pizza Slice Fractions",
+          "Math",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, Low preparation, Flexible",
+          "$3–8",
+          "30–45 min",
+        ],
+        [
+          "Color-Coded Times Table Poster",
+          "Math",
+          "Hands On/Tactile, Visual Focused, Group Focused/Social, Beginner, Independent Work, Less than an hour, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$2–5",
+          "30–60 min",
+        ],
+        [
+          "Candy Bar Arrays",
+          "Math",
+          "Hands On/Tactile, Visual Focused, Taste Focused, Multimodal Sensory, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, Low preparation, Flexible",
+          "$2–5",
+          "20–30 min",
+        ],
+        [
+          "Smoothie Recipe Multiplier",
+          "Math",
+          "Hands On/Tactile, Auditory Focused, Taste Focused, Multimodal Sensory, Visual Modeling, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, Low preparation, Highly structured",
+          "$4–10",
+          "30–45 min",
+        ],
+        [
+          "Sand Tray Letters",
+          "Reading and Writing",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Beginner, Independent Work, Less than an hour, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "<$2",
+          "15–30 min",
+        ],
+        [
+          "Sight Word/Letter Stomp",
+          "Reading and Writing",
+          "Hands On/Tactile, Visual Focused, High Energy, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, Low preparation, Highly structured",
+          "<$2",
+          "15–25 min",
+        ],
+        [
+          "Heavy Work Reading Nook",
+          "Reading and Writing",
+          "Hands On/Tactile, Low Energy, Individual Focused, Beginner, Independent Work, Less than an hour, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$0–10",
+          "20–45 min",
+        ],
+        [
+          "Quiet Letter Scavenger Hunt",
+          "Reading and Writing",
+          "Visual Focused, Hands On/Tactile, Low Energy, Individual Focused, Beginner, Independent Work, Less than an hour, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$0–2",
+          "20–30 min",
+        ],
+        [
+          "Chalk Wall Writing",
+          "Reading and Writing",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, High Energy, Beginner, Independent Work, Less than an hour, Offline, Outside/Nature or Inside, High sensory, Low preparation, Flexible",
+          "$1–5",
+          "20–40 min",
+        ],
+        [
+          "Texture Letter Cards",
+          "Reading and Writing",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Low Energy, Individual Focused, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, High preparation, Flexible",
+          "$3–8",
+          "20–40 min",
+        ],
+        [
+          "Obstacle Course Reading",
+          "Reading and Writing",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, High Energy, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, High preparation, Highly structured",
+          "$0–5",
+          "30–45 min",
+        ],
+        [
+          "Backyard Compass Quest",
+          "Geography",
+          "Hands On/Tactile, Visual Focused, High Energy, Group Focused/Social, Beginner/Intermediate, Teacher Dependent, Less than an hour, Offline, Outside/Nature, High sensory, High preparation, Highly structured",
+          "$0–10",
+          "30–60 min",
+        ],
+        [
+          "Quiet Map Puzzle Time",
+          "Geography",
+          "Hands On/Tactile, Visual Focused, Low Energy, Individual Focused, Beginner, Independent Work, Less than an hour, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$0–15",
+          "20–60 min",
+        ],
+        [
+          "Virtual Country Passport",
+          "Geography",
+          "Visual Focused, Multimodal Sensory, Low Energy, Individual Focused, Beginner/Intermediate, Independent Work, Less than an hour, Online, Inside, Low sensory, Low preparation, Flexible",
+          "$0–3",
+          "30–45 min/session",
+        ],
+        [
+          "Geography Beat-the-Clock Cards",
+          "Geography",
+          "Visual Focused, High Energy, Individual Focused, Beginner/Intermediate, Independent Work, Less than an hour, Offline, Inside, High sensory, Low preparation, Highly structured, Time Sensitive, Gamification",
+          "<$2",
+          "15–30 min",
+        ],
+        [
+          "Nature Habitat Walk",
+          "Geography",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Low Energy, Group Focused/Social, Beginner/Intermediate, Teacher Dependent, More than an hour, Offline, Outside/Nature, High sensory, Low preparation, Flexible",
+          "$0",
+          "45–90 min",
+        ],
+        [
+          "Online Geography Game with Headphones",
+          "Geography",
+          "Visual Focused, Auditory Focused, Individual Focused, Beginner/Intermediate, Independent Work, Less than an hour, Online, Inside, Low sensory, Low preparation, Highly structured, Time Sensitive, Gamification",
+          "$0",
+          "10–15 min",
+        ],
+        [
+          "Ancient Egypt Spice Market",
+          "History",
+          "Smell Focused, Hands On/Tactile, Auditory Focused, Multimodal Sensory, Visual Modeling, Low Energy, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, Low preparation, Flexible",
+          "$3–8",
+          "20–30 min",
+        ],
+        [
+          "Medieval Herb Garden Game",
+          "History",
+          "Smell Focused, Hands On/Tactile, Visual Focused, Multimodal Sensory, Group Focused/Social, Beginner/Intermediate, Teacher Dependent, Less than an hour, Offline, Inside or Outside/Nature, High sensory, High preparation, Gamification, Flexible",
+          "$5–15",
+          "30–60 min",
+        ],
+        [
+          "Ancient Rome Bakery Video & Worksheet",
+          "History",
+          "Auditory Focused, Visual Focused, Smell Focused, Multimodal Sensory, Visual Modeling, Low Energy, Individual/Group, Beginner, Teacher Dependent, Less than an hour, Video, Worksheet, Online, Inside, Low sensory/High sensory*, Low preparation, Highly structured",
+          "$3–6",
+          "30–45 min",
+        ],
+        [
+          "Explorer's Spice Route Game",
+          "History",
+          "Visual Focused, Smell Focused, Hands On/Tactile, Multimodal Sensory, High Energy, Group Focused/Social, Beginner/Intermediate, Teacher Dependent, More than an hour, Offline, Inside, High sensory, High preparation, Gamification, Flexible",
+          "$4–10",
+          "45–75 min",
+        ],
+        [
+          "Campfire Story History",
+          "History",
+          "Auditory Focused, Smell Focused, Low Energy, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Inside or Outside/Nature, Low sensory, Low preparation, Flexible",
+          "$0–5",
+          "20–40 min",
+        ],
+        [
+          "Dinosaur-Era Timeline Worksheet",
+          "History",
+          "Visual Focused, Hands On/Tactile, Low Energy, Individual Focused, Beginner, Independent Work, Less than an hour, Worksheet, Offline, Inside, Low sensory, Low preparation, Highly structured",
+          "<$2",
+          "20–40 min",
+        ],
+        [
+          "History Detective Mystery",
+          "History",
+          "Visual Focused, Hands On/Tactile, Multimodal Sensory, Individual/Group, Beginner/Intermediate, Teacher Dependent, More than an hour, Worksheet, Offline, Inside, Low sensory, High preparation, Gamification, Highly structured",
+          "$1–5",
+          "45–90 min",
+        ],
+        [
+          "Virtual Museum Wander",
+          "History",
+          "Visual Focused, Auditory Focused, Low Energy, Individual Focused, Beginner/Intermediate, Independent Work, Less than an hour, Online, Inside, Low sensory, Low preparation, Flexible",
+          "$0",
+          "30–60 min",
+        ],
+        [
+          "Historical Figure Trading Cards",
+          "History",
+          "Visual Focused, Hands On/Tactile, Low Energy, Individual Focused, Beginner/Intermediate, Independent Work, Multi-day, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$1–5",
+          "20–30 min/session",
+        ],
+        [
+          "Interactive Timeline Game Online",
+          "History",
+          "Visual Focused, Hands On/Tactile, Individual Focused, Beginner/Intermediate, Independent Work, Less than an hour, Online, Inside, Low sensory, Low preparation, Highly structured, Time Sensitive, Gamification",
+          "$0",
+          "15 min",
+        ],
+        [
+          "Five-Minute History Video Bites",
+          "History",
+          "Auditory Focused, Visual Focused, Low Energy, Individual/Group, Beginner, Teacher Dependent, Less than an hour per session, Multi-day, Video, Worksheet, Online, Inside, Low sensory, Low preparation, Highly structured, Gamification",
+          "$0–2",
+          "10–20 min/session",
+        ],
+        [
+          "Bean Seed Window Garden",
+          "Science",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Low Energy, Individual Focused, Beginner, Independent Work, Multi-day, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$1–3",
+          "10–15 min/day; 1 week",
+        ],
+        [
+          "Baking Soda Volcano Eruption",
+          "Science",
+          "Hands On/Tactile, Visual Focused, Auditory Focused, Multimodal Sensory, High Energy, Group Focused/Social, Beginner, Teacher Dependent, Less than an hour, Offline, Outside/Nature, High sensory, Low preparation, Highly structured",
+          "$2–5",
+          "30–45 min",
+        ],
+        [
+          "Sound Science Rubber Band Guitar",
+          "Science",
+          "Hands On/Tactile, Auditory Focused, Visual Focused, Multimodal Sensory, Low/Moderate Energy, Individual/Group, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, Low sensory, Low preparation, Flexible",
+          "$1–5",
+          "20–40 min",
+        ],
+        [
+          "Ice Melt Race",
+          "Science",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, High Energy, Individual/Group, Beginner, Teacher Dependent, Less than an hour, Offline, Inside or Outside/Nature, High sensory, Low preparation, Highly structured, Time Sensitive, Gamification",
+          "<$3",
+          "30–60 min",
+        ],
+        [
+          "Crystal Growing Station",
+          "Science",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Low Energy, Individual Focused, Beginner/Intermediate, Independent Work, Multi-day, Offline, Inside, Low sensory, High preparation, Flexible",
+          "$2–5",
+          "20–30 min setup + 10 min/day",
+        ],
+        [
+          "Sink or Float Station",
+          "Science",
+          "Hands On/Tactile, Visual Focused, Multimodal Sensory, Individual/Group, Beginner, Teacher Dependent, Less than an hour, Offline, Inside, High sensory, Low preparation, Highly structured, Flexible",
+          "$0–3",
+          "30–45 min",
+        ],
+        [
+          "Science Podcast Listening Lab",
+          "Science",
+          "Auditory Focused, Visual Focused, Hands On/Tactile, Multimodal Sensory, Low Energy, Individual/Group, Beginner/Intermediate, Teacher Dependent, Less than an hour, Online, Inside, Low sensory, Low preparation, Flexible",
+          "$0",
+          "20–40 min",
+        ],
+      ];
+
+      // Each lesson lands in ONE price bucket, based on the top of its estimated cost range
+      // ($5 or less = Less than $5, up to $10 = Between $5-10, above $10 = More than $10).
+      function costBucket(c) {
+        const nums = (c.match(/\d+/g) || ["0"]).map(Number);
+        const top = Math.max.apply(null, nums);
+        return top <= 5
+          ? "Less than $5"
+          : top <= 10
+            ? "Between $5-10"
+            : "More than $10";
+      }
+
+      const LESSONS = RAW.map(([title, subject, tags, cost, time], id) => {
+        const set = new Set();
+        tags.split(",").forEach((t) => {
+          const k = t.trim().replace(/\*$/, "").toLowerCase();
+          if (ALIAS[k]) ALIAS[k].forEach((x) => set.add(x));
+          else if (CANON[k]) set.add(CANON[k]);
+        });
+        set.add(costBucket(cost));
+        return { id, title, subject, cost, time, tags: set };
+      });
+
+      const SUBJECTS = [...new Set(LESSONS.map((l) => l.subject))];
+
+      /* ---------- TWO WAYS TO FIND THE SAME LESSONS ---------- */
+      const VIEWS = {
+        kind: "What kind of lesson are you looking for?",
+        subj: "By subject",
+      };
+
+      /* ---------- THE TEN TASKS (answer = the lesson title that counts as a correct click) ---------- */
+      const SCENARIO = "You are looking for a lesson plan for your child.";
+      const TASKS = [
+        {
+          id: 1,
+          text: "Find a lesson that is Intermediate, Online, Visual Focused, Low Sensory, and Group Focused.",
+          answer: "Science Podcast Listening Lab",
+        },
+        {
+          id: 2,
+          text: "Find a lesson that costs Less than $5, is Inside, High Energy, and requires High Preparation Needed.",
+          answer: "Obstacle Course Reading",
+        },
+        {
+          id: 3,
+          text: "Find a lesson that is Hands On/Tactile, Requiring Adult Support, Gamification, and Low Sensory.",
+          answer: "History Detective Mystery",
+        },
+        {
+          id: 4,
+          text: "Find a lesson that is Multi-day, Low Preparation Needed, Low Energy, and Multimodal Sensory.",
+          answer: "Bean Seed Window Garden",
+        },
+        {
+          id: 5,
+          text: "Find a lesson that is Taste Focused and Flexible.",
+          answer: "Candy Bar Arrays",
+        },
+        {
+          id: 6,
+          text: "Find a lesson that is Highly Structured, Time Sensitive, and Multimodal Sensory.",
+          answer: "Ice Melt Race",
+        },
+        {
+          id: 7,
+          text: "Find a lesson that is an Online Math lesson.",
+          answer: "Multiplication Rap Video Party",
+        },
+        {
+          id: 8,
+          text: "Find a lesson that is Smell Focused and More than an hour.",
+          answer: "Explorer's Spice Route Game",
+        },
+        {
+          id: 9,
+          text: "Find a lesson that is a Worksheet, Requiring Adult Support, and Offline.",
+          answer: "History Detective Mystery",
+        },
+        {
+          id: 10,
+          text: "Find a lesson that has Visual Modeling, is Hands On/Tactile, and is Taste Focused.",
+          answer: "Smoothie Recipe Multiplier",
+        },
+      ];
+
+      /* ---------- STATE ---------- */
+      // phase: start -> brief -> task -> brief -> task ... -> done   (review = researcher table)
+      let state = {
+        phase: "start",
+        view: "kind",
+        filters: [],
+        open: [],
+        path: [],
+      };
+      let session = { id: "", participant: "", order: [], idx: 0 };
+      let cur = null; // the task currently being timed: { task, startedAt, t0, clicks[] }
+
+      /* ---------- RESULTS: saved in this browser after every task, exported as Test Results.csv ---------- */
+      const STORE_KEY = "neuroboostResults";
+      const CSV_NAME = "Test Results.csv";
+      // Paste your Google Apps Script web app URL between the quotes (see the setup steps).
+      // While this is empty, results are only kept in the participant's own browser.
+      const RESULTS_ENDPOINT =
+        "https://script.google.com/macros/s/AKfycbzVe0KtqIxSaLeVCfLOGd_mSD2Enx7DPndkxUrrcmj_TKZC8zh74X2KGjXeiv-Uhx_oVg/exec";
+      const COLS = [
+        "participant_id",
+        "session_id",
+        "task_position",
+        "task_number",
+        "scenario",
+        "started_at",
+        "duration_sec",
+        "click_count",
+        "endpoint",
+        "correct_answer",
+        "result",
+        "view_at_endpoint",
+        "path_at_endpoint",
+        "click_sequence",
+      ];
+      let RESULTS = [];
+      try {
+        RESULTS = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+      } catch (e) {
+        RESULTS = [];
+      }
+      function saveAll() {
+        try {
+          localStorage.setItem(STORE_KEY, JSON.stringify(RESULTS));
+        } catch (e) {}
+      }
+
+      // Send one task result to the Google Sheet. A row is marked sent only once the request goes through;
+      // anything that fails stays unsent and is retried the next time the page loads or a task finishes.
+      function sendRow(r) {
+        if (!RESULTS_ENDPOINT || r.sent !== false) return;
+        r.sending = true;
+        fetch(RESULTS_ENDPOINT, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(r),
+        })
+          .then(() => {
+            r.sent = true;
+          })
+          .catch(() => {})
+          .then(() => {
+            delete r.sending;
+            saveAll();
+            if (state.phase === "review") render();
+          });
+      }
+      function flushUnsent() {
+        RESULTS.forEach((r) => {
+          if (!r.sending) sendRow(r);
+        });
+      }
+
+      function csvCell(v) {
+        let s = String(v === undefined || v === null ? "" : v);
+        if (/^[=+\-@]/.test(s)) s = "'" + s; // keep spreadsheet apps from treating text as a formula
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      function downloadCSV() {
+        const lines = [COLS.map(csvCell).join(",")].concat(
+          RESULTS.map((r) => COLS.map((c) => csvCell(r[c])).join(",")),
+        );
+        const blob = new Blob(["\ufeff" + lines.join("\r\n")], {
+          type: "text/csv;charset=utf-8",
+        });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = CSV_NAME;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+
+      /* ---------- CLICK RECORDING (only while a task is being timed) ---------- */
+      function pathText() {
+        return state.view === "kind"
+          ? state.filters.join(" + ")
+          : state.path.map((p) => p.label).join(" > ");
+      }
+      function log(type, label) {
+        if (!cur) return;
+        cur.clicks.push({
+          ms: Math.round(performance.now() - cur.t0),
+          type: type,
+          label: label,
+        });
+      }
+
+      /* ---------- SMALL HELPERS ---------- */
+      const $ = (id) => document.getElementById(id);
+      function el(tag, text, cls) {
+        const e = document.createElement(tag);
+        if (text !== undefined) e.textContent = text;
+        if (cls) e.className = cls;
+        return e;
+      }
+      function btn(text, fn, cls) {
+        const b = el("button", text, cls);
+        b.onclick = fn;
+        return b;
+      }
+      function shuffle(a) {
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const t = a[i];
+          a[i] = a[j];
+          a[j] = t;
+        }
+        return a;
+      }
+      // A lesson matches when it has ALL of the picked characteristics.
+      function matches(filters) {
+        return LESSONS.filter((l) => filters.every((f) => l.tags.has(f)));
+      }
+      function lessonLabel(l) {
+        return l.title + "  (" + l.time + " | " + l.cost + ")";
+      }
+
+      /* ---------- SESSION FLOW ---------- */
+      function beginSession(participant) {
+        session = {
+          id: Math.random().toString(36).slice(2, 8),
+          participant: participant,
+          order: shuffle(TASKS.slice()),
+          idx: 0,
+        };
+        cur = null;
+        state.phase = "brief";
+        render();
+      }
+      function startTask() {
+        state.view = "kind";
+        state.filters = [];
+        state.open = [];
+        state.path = [];
+        cur = {
+          task: session.order[session.idx],
+          startedAt: new Date().toISOString(),
+          t0: performance.now(),
+          clicks: [],
+        };
+        state.phase = "task";
+        render();
+      }
+      // Clicking any lesson ends the task: record the endpoint, then move straight on.
+      function openLesson(l) {
+        log("endpoint", l.title);
+        const dur = performance.now() - cur.t0;
+        const ok = l.title === cur.task.answer;
+        RESULTS.push({
+          participant_id: session.participant,
+          session_id: session.id,
+          task_position: session.idx + 1,
+          task_number: cur.task.id,
+          scenario: cur.task.text,
+          started_at: cur.startedAt,
+          duration_sec: (dur / 1000).toFixed(1),
+          click_count: cur.clicks.length,
+          endpoint: l.title,
+          correct_answer: cur.task.answer,
+          result: ok ? "Correct" : "Incorrect",
+          view_at_endpoint: VIEWS[state.view],
+          path_at_endpoint: pathText(),
+          click_sequence: cur.clicks
+            .map(
+              (c) =>
+                c.type +
+                ": " +
+                c.label +
+                " (" +
+                (c.ms / 1000).toFixed(1) +
+                "s)",
+            )
+            .join(" | "),
+          sent: false,
+        });
+        saveAll();
+        flushUnsent();
+        cur = null;
+        session.idx++;
+        if (session.idx >= session.order.length) {
+          state.phase = "done";
+        } else {
+          state.phase = "brief";
+        }
+        window.scrollTo(0, 0);
+        render();
+      }
+
+      /* ---------- SCREENS: START, BRIEFING, DONE, REVIEW ---------- */
+      function startScreen() {
+        const w = el("div");
+        const intro = el("div", undefined, "box");
+        intro.appendChild(el("p", "Welcome to the Neuroboost study"));
+        intro.appendChild(
+          el(
+            "p",
+            "Thank you for helping us test Neuroboost, a website that helps parents find lesson plans that fit their child.",
+          ),
+        );
+        w.appendChild(intro);
+
+        const how = el("div", undefined, "box");
+        how.appendChild(
+          el("p", "You will complete 10 short tasks. For each one:"),
+        );
+        how.appendChild(el("p", "1. Read the scenario and your objective."));
+        how.appendChild(el("p", "2. Click OK to begin. A timer starts."));
+        how.appendChild(
+          el("p", "3. Browse the site to find the lesson you think fits."),
+        );
+        how.appendChild(
+          el(
+            "p",
+            "4. Click on that lesson. You will go straight to the next task.",
+          ),
+        );
+        how.appendChild(
+          el(
+            "p",
+            "We are testing the website, not you. There are no wrong answers, so please click the way you naturally would. Your clicks and time are recorded.",
+          ),
+        );
+        w.appendChild(how);
+
+        const who = el("div", undefined, "box");
+        const lab = el("label", "Participant name or ID (optional)");
+        lab.setAttribute("for", "pid");
+        const inp = el("input");
+        inp.type = "text";
+        inp.id = "pid";
+        inp.autocomplete = "off";
+        who.appendChild(lab);
+        who.appendChild(inp);
+        w.appendChild(who);
+
+        w.appendChild(btn("Begin", () => beginSession(inp.value.trim())));
+        return w;
+      }
+
+      function briefScreen() {
+        const t = session.order[session.idx];
+        const w = el("div");
+        w.appendChild(
+          el(
+            "div",
+            "Task " + (session.idx + 1) + " of " + session.order.length,
+            "box",
+          ),
+        );
+        const sc = el("div", undefined, "box");
+        sc.appendChild(el("p", "Scenario: " + SCENARIO));
+        sc.appendChild(el("p", "Your objective: " + t.text));
+        sc.appendChild(
+          el(
+            "p",
+            "When you click OK, the timer starts. Click on the lesson you think is the right one.",
+          ),
+        );
+        w.appendChild(sc);
+        w.appendChild(btn("OK, start task", startTask));
+        return w;
+      }
+
+      function doneScreen() {
+        const w = el("div");
+        const b = el("div", undefined, "box");
+        b.appendChild(el("p", "All done. Thank you!"));
+        b.appendChild(
+          el(
+            "p",
+            "You completed all " +
+              session.order.length +
+              " tasks. Your answers have been recorded. You can close this page now.",
+          ),
+        );
+        w.appendChild(b);
+        return w;
+      }
+
+      function reviewScreen() {
+        const w = el("div");
+        const ok = RESULTS.filter((r) => r.result === "Correct").length;
+        const sessions = new Set(RESULTS.map((r) => r.session_id)).size;
+        const unsent = RESULTS.filter((r) => r.sent === false).length;
+        const rb = el("div", undefined, "box");
+        rb.appendChild(
+          el(
+            "p",
+            "Researcher review. This browser holds " +
+              RESULTS.length +
+              " saved task results from " +
+              sessions +
+              " session(s); " +
+              ok +
+              " correct.",
+          ),
+        );
+        rb.appendChild(
+          el(
+            "p",
+            RESULTS_ENDPOINT
+              ? "Google Sheet sending is on. " +
+                  unsent +
+                  " result(s) in this browser have not reached the sheet yet."
+              : "Google Sheet sending is off (no RESULTS_ENDPOINT set). Results stay in this browser only.",
+          ),
+        );
+        w.appendChild(rb);
+        const row = el("div", undefined, "row");
+        row.style.marginBottom = "12px";
+        row.appendChild(btn("Download " + CSV_NAME, downloadCSV));
+        if (RESULTS_ENDPOINT && unsent)
+          row.appendChild(
+            btn("Resend " + unsent + " unsent result(s)", () => {
+              flushUnsent();
+              render();
+            }),
+          );
+        row.appendChild(
+          btn("Clear all saved results", () => {
+            if (
+              confirm(
+                "Delete all saved results from this browser? This cannot be undone.",
+              )
+            ) {
+              RESULTS = [];
+              saveAll();
+              render();
+            }
+          }),
+        );
+        w.appendChild(row);
+        const show = [
+          "participant_id",
+          "session_id",
+          "task_position",
+          "task_number",
+          "duration_sec",
+          "click_count",
+          "endpoint",
+          "result",
+        ];
+        const wrap = el("div", undefined, "scroll");
+        const tbl = el("table", undefined, "results");
+        const hr = el("tr");
+        show.forEach((c) => hr.appendChild(el("th", c)));
+        tbl.appendChild(hr);
+        RESULTS.forEach((r) => {
+          const tr = el("tr");
+          show.forEach((c) =>
+            tr.appendChild(el("td", String(r[c] === undefined ? "" : r[c]))),
+          );
+          tbl.appendChild(tr);
+        });
+        wrap.appendChild(tbl);
+        w.appendChild(wrap);
+        return w;
+      }
+
+      /* ---------- VIEW A: WHAT KIND OF LESSON (multi-select) ---------- */
+      function toggleFilter(v) {
+        const i = state.filters.indexOf(v);
+        if (i >= 0) state.filters.splice(i, 1);
+        else state.filters.push(v);
+        log(i >= 0 ? "filter_off" : "filter_on", v);
+        render();
+      }
+
+      function kindScreen() {
+        const wrap = el("div", undefined, "two");
+        const left = el("div");
+        const right = el("div");
+
+        left.appendChild(
+          el(
+            "div",
+            "Pick as many as you like. Lessons must match everything you pick.",
+            "box",
+          ),
+        );
+        CATS.forEach(([name, vals]) => {
+          const box = el("div", undefined, "box");
+          const isOpen = state.open.indexOf(name) >= 0;
+          const n = vals.filter((v) => state.filters.indexOf(v) >= 0).length;
+          box.appendChild(
+            btn(
+              (isOpen ? "[-] " : "[+] ") +
+                name +
+                (n ? "  (" + n + " picked)" : ""),
+              () => {
+                if (isOpen) state.open.splice(state.open.indexOf(name), 1);
+                else state.open.push(name);
+                log("category_toggle", name);
+                render();
+              },
+              "full",
+            ),
+          );
+          if (isOpen) {
+            const g = el("div", undefined, "grid");
+            g.style.marginTop = "8px";
+            g.style.marginBottom = "0";
+            vals.forEach((v) => {
+              const on = state.filters.indexOf(v) >= 0;
+              const count = matches(
+                on ? state.filters : state.filters.concat(v),
+              ).length;
+              const b = btn(
+                (on ? "[x] " : "[ ] ") + v + "  (" + count + ")",
+                () => toggleFilter(v),
+                on ? "on" : "",
+              );
+              if (!on && count === 0) b.disabled = true;
+              g.appendChild(b);
+            });
+            box.appendChild(g);
+          }
+          left.appendChild(box);
+        });
+
+        const res = matches(state.filters);
+        const head = el("div", undefined, "box");
+        head.appendChild(
+          el(
+            "p",
+            "Your picks: " +
+              (state.filters.length ? state.filters.join(", ") : "none yet"),
+          ),
+        );
+        head.appendChild(el("p", res.length + " matching lessons"));
+        if (state.filters.length) {
+          head.appendChild(
+            btn("Clear all picks", () => {
+              state.filters = [];
+              log("clear_filters", "Clear all picks");
+              render();
+            }),
+          );
+        }
+        right.appendChild(head);
+
+        if (res.length === 0) {
+          right.appendChild(
+            el(
+              "div",
+              "No lessons match all of these picks. Remove one to see more.",
+              "placeholder",
+            ),
+          );
+        } else {
+          const list = el("div", undefined, "list");
+          res.forEach((l) =>
+            list.appendChild(btn(lessonLabel(l), () => openLesson(l))),
+          );
+          right.appendChild(list);
+        }
+
+        wrap.appendChild(left);
+        wrap.appendChild(right);
+        return wrap;
+      }
+
+      /* ---------- VIEW B: BY SUBJECT (hierarchy) ---------- */
+      function subjScreen() {
+        const p = state.path;
+        const w = el("div");
+        w.appendChild(
+          el(
+            "div",
+            ["Pick a subject", "Pick a setting", "Pick a lesson"][p.length],
+            "box",
+          ),
+        );
+        const grid = el("div", undefined, p.length === 2 ? "list" : "grid");
+
+        if (p.length === 0) {
+          SUBJECTS.forEach((s) => {
+            const n = LESSONS.filter((l) => l.subject === s).length;
+            grid.appendChild(
+              btn(s + "  (" + n + " lessons)", () => {
+                state.path.push({ label: s, key: s });
+                log("select", s);
+                render();
+              }),
+            );
+          });
+        } else if (p.length === 1) {
+          ["Online", "Offline"].forEach((e) => {
+            const n = LESSONS.filter(
+              (l) => l.subject === p[0].key && l.tags.has(e),
+            ).length;
+            grid.appendChild(
+              btn(e + "  (" + n + " lessons)", () => {
+                state.path.push({ label: e, key: e });
+                log("select", e);
+                render();
+              }),
+            );
+          });
+        } else {
+          const list = LESSONS.filter(
+            (l) => l.subject === p[0].key && l.tags.has(p[1].key),
+          );
+          if (list.length === 0) {
+            w.appendChild(
+              el(
+                "div",
+                "No lessons here yet. Use Back to try another setting.",
+                "placeholder",
+              ),
+            );
+            return w;
+          }
+          list.forEach((l) =>
+            grid.appendChild(btn(lessonLabel(l), () => openLesson(l))),
+          );
+        }
+        w.appendChild(grid);
+        return w;
+      }
+
+      /* ---------- NAVIGATION ---------- */
+      function goBack() {
+        if (state.view === "subj") state.path.pop();
+        log("back", "Back");
+        render();
+      }
+      function startOver() {
+        if (state.view === "kind") state.filters = [];
+        else state.path = [];
+        log("start_over", "Start over");
+        render();
+      }
+
+      function render() {
+        const inTask = state.phase === "task";
+        $("taskbar").style.display = inTask ? "" : "none";
+        $("viewsBox").style.display = inTask ? "" : "none";
+        $("crumbs").style.display = inTask ? "" : "none";
+        const m = $("main");
+        m.innerHTML = "";
+
+        if (state.phase === "start") {
+          m.appendChild(startScreen());
+          return;
+        }
+        if (state.phase === "brief") {
+          m.appendChild(briefScreen());
+          return;
+        }
+        if (state.phase === "done") {
+          m.appendChild(doneScreen());
+          return;
+        }
+        if (state.phase === "review") {
+          m.appendChild(reviewScreen());
+          return;
+        }
+
+        const tb = $("taskbar");
+        tb.innerHTML = "";
+        tb.appendChild(
+          el("p", "Task " + (session.idx + 1) + " of " + session.order.length),
+        );
+        tb.appendChild(el("p", "Your objective: " + cur.task.text));
+
+        const views = $("views");
+        views.innerHTML = "";
+        Object.keys(VIEWS).forEach((k) => {
+          views.appendChild(
+            btn(
+              VIEWS[k],
+              () => {
+                state.view = k;
+                log("view", VIEWS[k]);
+                render();
+              },
+              state.view === k ? "on" : "",
+            ),
+          );
+        });
+
+        const c = $("crumbs");
+        c.innerHTML = "";
+        let here = "You are here: Home > " + VIEWS[state.view];
+        if (state.view === "kind" && state.filters.length)
+          here += " > " + state.filters.length + " picked";
+        if (state.view === "subj" && state.path.length)
+          here += " > " + state.path.map((p) => p.label).join(" > ");
+        c.appendChild(el("p", here));
+        const row = el("div", undefined, "row");
+        row.style.marginTop = "8px";
+        const back = btn("Back", goBack);
+        back.disabled = state.view === "kind" || state.path.length === 0;
+        row.appendChild(back);
+        row.appendChild(btn("Start over", startOver));
+        c.appendChild(row);
+
+        m.appendChild(state.view === "kind" ? kindScreen() : subjScreen());
+      }
+
+      // Researcher view: open index.html?review to see saved results and download the CSV.
+      if (/[?&]review\b/.test(location.search)) state.phase = "review";
+      flushUnsent();
+      render();
+    </script>
+  </body>
+</html>
