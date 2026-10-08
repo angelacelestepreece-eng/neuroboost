@@ -584,8 +584,9 @@
         filters: [],
         open: [],
         path: [],
+        notice: "",
       };
-      let session = { id: "", participant: "", order: [], idx: 0 };
+      let session = { id: "", order: [], idx: 0 }; // id = random participant ID, made fresh each session
       let cur = null; // the task currently being timed: { task, startedAt, t0, clicks[] }
 
       /* ---------- RESULTS: saved in this browser after every task, exported as Test Results.csv ---------- */
@@ -597,16 +598,18 @@
         "https://script.google.com/macros/s/AKfycbzVe0KtqIxSaLeVCfLOGd_mSD2Enx7DPndkxUrrcmj_TKZC8zh74X2KGjXeiv-Uhx_oVg/exec";
       const COLS = [
         "participant_id",
-        "session_id",
         "task_position",
         "task_number",
         "scenario",
         "started_at",
         "duration_sec",
         "click_count",
+        "result",
+        "ended_by",
+        "first_lesson_clicked",
+        "wrong_lesson_clicks",
         "endpoint",
         "correct_answer",
-        "result",
         "view_at_endpoint",
         "path_at_endpoint",
         "click_sequence",
@@ -678,6 +681,7 @@
           : state.path.map((p) => p.label).join(" > ");
       }
       function log(type, label) {
+        if (type !== "wrong_lesson") state.notice = ""; // any other click clears the "not this lesson" message
         if (!cur) return;
         cur.clicks.push({
           ms: Math.round(performance.now() - cur.t0),
@@ -717,10 +721,20 @@
       }
 
       /* ---------- SESSION FLOW ---------- */
-      function beginSession(participant) {
+      function newParticipantId() {
+        let s;
+        try {
+          const a = new Uint32Array(2);
+          crypto.getRandomValues(a);
+          s = (a[0].toString(36) + a[1].toString(36)).slice(0, 8);
+        } catch (e) {
+          s = Math.random().toString(36).slice(2, 10);
+        }
+        return "P-" + s.toUpperCase();
+      }
+      function beginSession() {
         session = {
-          id: Math.random().toString(36).slice(2, 8),
-          participant: participant,
+          id: newParticipantId(),
           order: shuffle(TASKS.slice()),
           idx: 0,
         };
@@ -733,6 +747,7 @@
         state.filters = [];
         state.open = [];
         state.path = [];
+        state.notice = "";
         cur = {
           task: session.order[session.idx],
           startedAt: new Date().toISOString(),
@@ -742,23 +757,46 @@
         state.phase = "task";
         render();
       }
-      // Clicking any lesson ends the task: record the endpoint, then move straight on.
+      // A task ends in one of two ways: the participant clicks the correct lesson, or clicks "I'm done".
+      // A wrong lesson is recorded as a click, shows a short message, and the participant keeps looking.
       function openLesson(l) {
+        if (l.title !== cur.task.answer) {
+          log("wrong_lesson", l.title);
+          state.notice =
+            "That is not the lesson for this task. Keep looking, or click I'm done.";
+          render();
+          return;
+        }
         log("endpoint", l.title);
+        finishTask(l.title, "Clicked correct lesson");
+      }
+      function imDone() {
+        log("im_done", "I'm done");
+        finishTask("", "I'm done button");
+      }
+      function finishTask(correctTitle, endedBy) {
         const dur = performance.now() - cur.t0;
-        const ok = l.title === cur.task.answer;
+        const lessonClicks = cur.clicks.filter(
+          (c) => c.type === "wrong_lesson" || c.type === "endpoint",
+        );
         RESULTS.push({
-          participant_id: session.participant,
-          session_id: session.id,
+          participant_id: session.id,
           task_position: session.idx + 1,
           task_number: cur.task.id,
           scenario: cur.task.text,
           started_at: cur.startedAt,
           duration_sec: (dur / 1000).toFixed(1),
           click_count: cur.clicks.length,
-          endpoint: l.title,
+          result: correctTitle ? "Correct" : "Gave up",
+          ended_by: endedBy,
+          first_lesson_clicked: lessonClicks.length
+            ? lessonClicks[0].label
+            : "",
+          wrong_lesson_clicks: cur.clicks.filter(
+            (c) => c.type === "wrong_lesson",
+          ).length,
+          endpoint: correctTitle || "I'm done (no correct lesson found)",
           correct_answer: cur.task.answer,
-          result: ok ? "Correct" : "Incorrect",
           view_at_endpoint: VIEWS[state.view],
           path_at_endpoint: pathText(),
           click_sequence: cur.clicks
@@ -812,7 +850,7 @@
         how.appendChild(
           el(
             "p",
-            "4. Click on that lesson. You will go straight to the next task.",
+            "4. Click the lesson you think is right. If it is the right one, you move on to the next task. If you cannot find it, click the I'm done button.",
           ),
         );
         how.appendChild(
@@ -823,18 +861,7 @@
         );
         w.appendChild(how);
 
-        const who = el("div", undefined, "box");
-        const lab = el("label", "Participant name or ID (optional)");
-        lab.setAttribute("for", "pid");
-        const inp = el("input");
-        inp.type = "text";
-        inp.id = "pid";
-        inp.autocomplete = "off";
-        who.appendChild(lab);
-        who.appendChild(inp);
-        w.appendChild(who);
-
-        w.appendChild(btn("Begin", () => beginSession(inp.value.trim())));
+        w.appendChild(btn("Begin", () => beginSession()));
         return w;
       }
 
@@ -854,7 +881,7 @@
         sc.appendChild(
           el(
             "p",
-            "When you click OK, the timer starts. Click on the lesson you think is the right one.",
+            "When you click OK, the timer starts. Click the lesson you think is right, or click I'm done if you cannot find it.",
           ),
         );
         w.appendChild(sc);
@@ -881,7 +908,7 @@
       function reviewScreen() {
         const w = el("div");
         const ok = RESULTS.filter((r) => r.result === "Correct").length;
-        const sessions = new Set(RESULTS.map((r) => r.session_id)).size;
+        const people = new Set(RESULTS.map((r) => r.participant_id)).size;
         const unsent = RESULTS.filter((r) => r.sent === false).length;
         const rb = el("div", undefined, "box");
         rb.appendChild(
@@ -890,8 +917,8 @@
             "Researcher review. This browser holds " +
               RESULTS.length +
               " saved task results from " +
-              sessions +
-              " session(s); " +
+              people +
+              " participant(s); " +
               ok +
               " correct.",
           ),
@@ -933,13 +960,13 @@
         w.appendChild(row);
         const show = [
           "participant_id",
-          "session_id",
           "task_position",
           "task_number",
           "duration_sec",
           "click_count",
-          "endpoint",
+          "wrong_lesson_clicks",
           "result",
+          "ended_by",
         ];
         const wrap = el("div", undefined, "scroll");
         const tbl = el("table", undefined, "results");
@@ -1164,6 +1191,11 @@
           el("p", "Task " + (session.idx + 1) + " of " + session.order.length),
         );
         tb.appendChild(el("p", "Your objective: " + cur.task.text));
+        if (state.notice) tb.appendChild(el("p", state.notice));
+        const doneRow = el("div", undefined, "row");
+        doneRow.style.marginTop = "8px";
+        doneRow.appendChild(btn("I'm done", imDone));
+        tb.appendChild(doneRow);
 
         const views = $("views");
         views.innerHTML = "";
