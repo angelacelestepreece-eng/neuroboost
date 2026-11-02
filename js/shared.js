@@ -24,7 +24,7 @@ window.sliderTag = (name, i) => `${name}: ${window.SLIDERS[name].stops[i]}`;
 // Filter hierarchy, in the order of the team's updated design. A { slider } entry is drawn as a slider.
 window.CATEGORIES = [
   { name: "Subject", options: ["Math", "Reading and Writing", "History", "Science", "Geography"] },
-  { name: "Preparations", options: [{ slider: "Preparation Level" }, { slider: "Teacher Participation Level" }, { slider: "Cost" }] },
+  { name: "Preparation", options: [{ slider: "Preparation Level" }, { slider: "Teacher Participation Level" }, { slider: "Cost" }] },
   { name: "Lesson Structure", options: [{ slider: "Teacher Participation Level" }, "Independent Work", "Group Focused/Social", "Highly Structured", "Flexible Structure", "Time Sensitive", "Multi-day", "Scaffolding"] },
   { name: "Methods of Teaching", options: [{ slider: "Physical Activity Level" }, "Hands On/Tactile", "Scaffolding", "Gamification", "Video", "Worksheet", "Online", "Offline", "Inside", "Outside"] },
   { name: "Sensory Focus", options: [{ slider: "Sensory Level" }, "Hands On/Tactile", "Auditory Focused", "Visual Focused", "Taste Focused", "Smell Focused", "Multimodal Sensory"] },
