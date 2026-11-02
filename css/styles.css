@@ -311,6 +311,30 @@ button { font: inherit; }
   margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--accent-line);
 }
 .lesson-main ul { padding-left: 1.2em; margin: 0; }
+
+/* Collapsible lesson sections */
+.lesson-main details.sec { margin-bottom: 6px; }
+.lesson-main details.sec > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
+  min-height: 44px; padding: 6px 4px; border-bottom: 1px solid var(--accent-line); border-radius: 6px 6px 0 0;
+}
+.lesson-main details.sec > summary::-webkit-details-marker { display: none; }
+.lesson-main details.sec > summary::before {
+  content: ""; flex: none; width: 0; height: 0;
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 9px solid var(--chip);
+  transition: transform .15s ease;
+}
+.lesson-main details.sec[open] > summary::before { transform: rotate(90deg); }
+.lesson-main details.sec > summary:hover { background: var(--accent-tint); }
+.lesson-main details.sec > summary h2 { margin: 0; padding: 0; border: 0; }
+.sec-hint { margin-left: auto; color: var(--muted); font-size: .88rem; text-align: right; }
+.sec-body { padding: 14px 2px 22px; }
+.sec-tools { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 6px; }
+.sec-tools button {
+  font: inherit; font-size: .85rem; background: #fff; color: var(--teal-dark);
+  border: 1px solid var(--teal-line); border-radius: 999px; padding: 5px 14px; cursor: pointer;
+}
+.sec-tools button:hover { background: #eef7f7; border-color: var(--teal); }
 .lesson-main li { margin-bottom: 6px; }
 
 .steps { list-style: none; padding: 0 !important; counter-reset: step; }
@@ -427,6 +451,9 @@ table.chart td.blank { color: #b9c4c4; }
 }
 @media print {
   .site-header, .back, .print-btn, .crumbs, .suggestions, .recent { display: none; }
+  .sec-tools, .sec-hint, .search { display: none; }
+  .lesson-main details.sec > summary::before { display: none; }
+  .lesson-main details.sec > summary { border-bottom: 1px solid #999; }
   .lesson-layout { grid-template-columns: 1fr; }
   body { background: #fff; }
 }
