@@ -121,37 +121,47 @@
       </ul>
     </section>` : "";
 
+  // ---- Collapsible sections ----
+  // Each section is a <details> block. Learning goal and Lesson steps start open; the rest start closed.
+  // The hint on the right says what's inside while it's closed. Printing opens every section (see the end of this file).
+  const sec = (title, body, hint, open) => `
+      <details class="sec"${open ? " open" : ""}>
+        <summary><h2>${esc(title)}</h2>${hint ? `<span class="sec-hint">${esc(hint)}</span>` : ""}</summary>
+        <div class="sec-body">${body}</div>
+      </details>`;
+  const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
   // Printable chart or worksheet; "" cells are blanks for your child to fill in.
-  const chartHtml = c => `<section><h2>${esc(c.title)}</h2>${c.intro ? `<p>${esc(c.intro)}</p>` : ""}
+  const chartHtml = c => sec(c.title, `${c.intro ? `<p>${esc(c.intro)}</p>` : ""}
         <table class="chart"><thead><tr>${c.head.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-        <tbody>${c.rows.map(r => `<tr>${r.map(v => v === "" ? `<td class="blank">______</td>` : `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></section>`;
+        <tbody>${c.rows.map(r => `<tr>${r.map(v => v === "" ? `<td class="blank">______</td>` : `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`, "Printable", false);
 
   const ph = name => `<div class="placeholder">Your team will write the ${name} for this lesson.</div>`;
   const list = arr => `<ul>${arr.map(i => `<li>${esc(i)}</li>`).join("")}</ul>`;
+  const tools = `<div class="sec-tools"><button type="button" data-sections="open">Expand all</button><button type="button" data-sections="close">Collapse all</button></div>`;
 
   let mainHtml;
   if (full) {
-    mainHtml = `
-      <section><h2>Learning goal</h2><p>${esc(full.goal)}</p></section>
-      <section><h2>What you'll need</h2>${list(full.materials)}</section>
-      <section><h2>Before you start</h2>${list(full.prep)}</section>
-      <section><h2>Lesson steps</h2>
+    mainHtml = tools +
+      sec("Learning goal", `<p>${esc(full.goal)}</p>`, "", true) +
+      sec("What you'll need", list(full.materials), count(full.materials.length, "item"), false) +
+      sec("Before you start", list(full.prep), count(full.prep.length, "task"), false) +
+      sec("Lesson steps", `
         <p>Show your child this plan first. Knowing the order helps reduce surprises.</p>
-        <div class="flow" aria-label="Lesson order">${full.flow.map((f, i) => `${i ? "<i>→</i>" : ""}<span>${i + 1}. ${f}</span>`).join("")}</div>
+        <div class="flow" aria-label="Lesson order">${full.flow.map((f, i) => `${i ? "<i>→</i>" : ""}<span>${i + 1}. ${esc(f)}</span>`).join("")}</div>
         <ol class="steps" style="margin-top:16px">${full.steps.map(([t, time, body, say]) => `
           <li><h3>${esc(t)} <small>${esc(time)}</small></h3><p>${esc(body)}</p>${say ? `<span class="say"><b>Say together:</b> “${esc(say)}”</span>` : ""}</li>`).join("")}
-        </ol>
-      </section>
-      ${full.chart ? chartHtml(full.chart) : ""}
-      <section><h2>Sensory &amp; regulation tips</h2><div class="callout">${list(full.sensory)}</div></section>
-      <section><h2>Adapt it</h2>${Object.entries(full.adapt).map(([k, v]) => `<p><b>${esc(k)}:</b> ${esc(v)}</p>`).join("")}</section>
-      <section><h2>Check for understanding</h2>${list(full.check)}</section>
-      ${full.safety ? `<section><h2>Safety</h2><div class="callout warn">${esc(full.safety)}</div></section>` : ""}`;
+        </ol>`, `${count(full.steps.length, "step")} · ${lesson.time}`, true) +
+      (full.chart ? chartHtml(full.chart) : "") +
+      sec("Sensory & regulation tips", `<div class="callout">${list(full.sensory)}</div>`, count(full.sensory.length, "tip"), false) +
+      sec("Adapt it", Object.entries(full.adapt).map(([k, v]) => `<p><b>${esc(k)}:</b> ${esc(v)}</p>`).join(""), "Easier · Harder", false) +
+      sec("Check for understanding", list(full.check), count(full.check.length, "question"), false) +
+      (full.safety ? sec("Safety", `<div class="callout warn">${esc(full.safety)}</div>`, "", false) : "");
   } else {
     mainHtml = `
       <div class="draft-banner"><b>Draft lesson.</b> The full plan for this lesson is still being written. The overview and tags are final.</div>
       ${["Learning goal", "What you'll need", "Before you start", "Lesson steps", "Sensory & regulation tips", "Adapt it", "Check for understanding"]
-        .map(s => `<section><h2>${esc(s)}</h2>${ph(s.toLowerCase())}</section>`).join("")}`;
+        .map((t, i) => sec(t, ph(t.toLowerCase()), "", i === 0 || i === 3)).join("")}`;
   }
 
   root.innerHTML = `
@@ -175,4 +185,25 @@
     </div>
     ${recentHtml}
     ${suggestHtml}`;
+
+  // ---- Expand all / Collapse all ----
+  root.addEventListener("click", e => {
+    const b = e.target.closest("[data-sections]");
+    if (!b) return;
+    const open = b.dataset.sections === "open";
+    root.querySelectorAll("details.sec").forEach(d => { d.open = open; });
+  });
+
+  // ---- Printing: open every section so nothing is left off the page, then put them back ----
+  let before = null;
+  window.addEventListener("beforeprint", () => {
+    const all = [...root.querySelectorAll("details.sec")];
+    before = all.map(d => d.open);
+    all.forEach(d => { d.open = true; });
+  });
+  window.addEventListener("afterprint", () => {
+    if (!before) return;
+    root.querySelectorAll("details.sec").forEach((d, i) => { d.open = before[i]; });
+    before = null;
+  });
 })();
